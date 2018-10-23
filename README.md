@@ -1,16 +1,21 @@
 # Postgres HA
 ## Restful
-  |No | command| comment            |example  |
-  |-- | ----   | ----               | -----   |
-  |1  | start  | start the instance |curl -X POST http://host/start/:scope|
-### curl -X POST http://pg-node01/start/:scope
-### curl -X POST http://pg-node01/stop/:scope
-### curl -X GET  http://pg-node01/state/:scope
-### curl -X GET  http://pg-node01/lsn/:scope
-### curl -X GET  http://pg-node01/validLsn/:timeline/:highLsn/:lowLsn
-### curl -X GET  http://pg-node01/walFiles/:timeline/:highLsn/:lowLsn
-### curl -X GET  http://pg-node01/walFiles/:walFile
-### curl -X GET  http://pg-node01/in_recovery
+  |No | Resource                   | POST              | GET                                   |PUT                          | DELETE               |
+  |1  | /api/pg/v1/instance/:scope | Start pg instance | Get the instance state                | -                           | Stop the pg instance |
+  |2  | /api/pg/v1/lsn/:scope      | -                 | Get the pg's lsn info                 | -                           | -                    |
+  |3  | /api/pg/v1/walFiles/:scope | -                 | Get the wal files from specified lsn  | -                           | -                    |
+  |4  | /api/pg/v1/walFile/:walFile| -                 | Get the wal file from remote          | Push the wal file to remote | -                    |
+  |4  | /api/pg/v1/in_recovery     | -                 | Get the node's recovery mode          | -                           | -                    |
+
+### /api/pg/v1/instance/:scope 
+### /api/pg/v1/lsn/:scope
+### /api/pg/v1/walFiles/:scope
+### /api/pg/v1/walFile/:walFile
+### /api/pg/v1/in_recovery
+```shell
+$curl -X GET http://hostname/api/pg/v1/in_recovery
+{"in_recovery":"f"}
+```
 ## Test cases
 ### Slave restart
 ### Master restart
