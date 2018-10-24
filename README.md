@@ -23,7 +23,7 @@ $curl -X GET http://pg-node01:8079/api/pg/v1/instance/current
 ```
 **Get all nodes' state**
 ```shell
-$curl -X GET http://10.137.91.60:8079/api/pg/v1/instance/all
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
 {"pg-node01":"single","pg-node02":"inactive"}%
 ```
   |No | state    | Comment     |
@@ -34,10 +34,7 @@ $curl -X GET http://10.137.91.60:8079/api/pg/v1/instance/all
   | 4 | inactive | Not started |
 
 #### POST
-```shell
-$curl -X GET http://10.137.91.60:8079/api/pg/v1/instance/all             
-{"pg-node01":"single","pg-node02":"inactive"}%
-```
+
   | No | Scope           | Sequence           | Comment                                                             |
   | -  | -               | -                  | -                                                                   |
   | 1  | current         |                    | Start the specified node (pg_ctl stop -D /DATA)                     |
@@ -49,10 +46,58 @@ $curl -X GET http://10.137.91.60:8079/api/pg/v1/instance/all
   | 7  | switchover      | masterSlave        | Switchover (master down -> slave down -> slave up -> master up)     |
   | 8  | switchover      | slaveMaster        | Switchover (slave down -> master down -> slave up -> master up)     |
 
+**Start the node directly**
+--todo
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/current
+```
+
+**Start the node as master**
+--todo
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/master
+```
+
+**Start the node as slace**
+--todo
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/master
+```
+
+**Start the nodes be the sequence (Master -> Slave)**
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"master","pg-node02":"slave"}%
+```
+
+**Failover (stop slave -> start node as master)**
+--todo
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/masterSlave
+```
+
+**Failover (Promote)**
+--todo
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster
+```
+
+**Switch the master slave by the sequence (master down -> slave down -> slave start as master -> master start as slave)**
+--todo
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/masterSlave
+```
+
+**Switch the master slave by the sequence (slave down -> master down -> slave start as master -> master start as slave)**
+--todo
+```shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster
+```
+
 #### DELETE
 **Stop the specified node**
 ```shell
-$curl -X DELETE http://10.137.91.60:8079/api/pg/v1/instance/all
+$curl -X DELETE http://pg-node01/api/pg/v1/instance/all
 {"pg-node01":"inactive","pg-node02":"inactive"}
 ```
   | No | Scope       | Comment                                        |
@@ -128,11 +173,13 @@ $curl -X GET http://hostname/api/pg/v1/in_recovery
 $curl -X GET http://hostname/api/pg/v1/validLsn/3/0/39000028
 {"code":0,"msg":"Valid lsn","cnt":"1"}
 ```
+
     | No | Field | Comment                           |
-    |-   | -     | -                                 |
+    | -  | -     | -                                 |
     | 1  | code  | return code                       |
     | 2  | msg   | return message                    |
     | 3  | cnt   | Number of entries beghind the lsn |
+
 ## Test cases
 ### Slave restart
 ### Master restart
