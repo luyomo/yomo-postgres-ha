@@ -26,12 +26,13 @@ $curl -X GET http://pg-node01:8079/api/pg/v1/instance/current
 $curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
 {"pg-node01":"single","pg-node02":"inactive"}%
 ```
-  |No | state    | Comment     |
-  |-  | -        | -           |
-  | 1 | single   | single node |
-  | 2 | master   | master node |
-  | 3 | slave    | slave node  |
-  | 4 | inactive | Not started |
+  |No | state    | Comment       |
+  |-  | -        | -             |
+  | 1 | single   | single node   |
+  | 2 | master   | master node   |
+  | 3 | slave    | slave node    |
+  | 4 | inactive | Not started   |
+  | 5 | recovery | Recovery mode |
 
 #### POST
 
@@ -58,7 +59,7 @@ $curl -X POST http://pg-node02:8079/api/pg/v1/instance/current
 **Start the node as master**
 ```shell
 $curl -X POST http://pg-node02:8079/api/pg/v1/instance/master
-{"pg-node01":"inactive","pg-node02":"inactive"}
+{"pg-node01":"inactive","pg-node02":"single"}
 ```
 
 **Start the node as slave**
@@ -169,7 +170,6 @@ $curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
 Here has one issue to resolve. When starting the slave, the got status is not updated. Still showing both single, has to wait for a moment
 
 **Switch the master slave by the sequence (master down -> slave down -> slave start as master -> master start as slave)**
---todo
 ```shell
 $curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
 {"pg-node01":"master","pg-node02":"slave"}
@@ -222,7 +222,7 @@ $curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster
 {"pg-node01":"inactive","pg-node02":"inactive"}
 ```
 
-**Stop the nodes by the sequence (master -> slave) **
+**Stop the nodes by the sequence (master -> slave)**
 ```shell
 $curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/masterSlave
 {"pg-node01":"inactive","pg-node02":"inactive"}
@@ -289,16 +289,16 @@ $curl -X GET http://hostname/api/pg/v1/in_recovery
 {"in_recovery":"f"}
 ```
 ### /api/pg/v1/validLsn 
+
 ```shell
 $curl -X GET http://hostname/api/pg/v1/validLsn/3/0/39000028
 {"code":0,"msg":"Valid lsn","cnt":"1"}
 ```
-
-    | No | Field | Comment                           |
-    | -  | -     | -                                 |
-    | 1  | code  | return code                       |
-    | 2  | msg   | return message                    |
-    | 3  | cnt   | Number of entries beghind the lsn |
+  | No | Field | Comment                           |
+  | -  | -     | -                                 |
+  | 1  | code  | return code                       |
+  | 2  | msg   | return message                    |
+  | 3  | cnt   | Number of entries beghind the lsn |
 
 ## Test cases
 ### Slave restart
