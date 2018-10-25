@@ -1,4 +1,4 @@
-<img align="right" width="150" height="50" src="https://github.com/luyomo/yomo-postgres-ha/blob/master/image/yomo.jpg">
+# <img align="right" width="150" height="50" src="https://github.com/luyomo/yomo-postgres-ha/blob/master/image/yomo.jpg">
 # Postgres HA
 ## Table of contents
 1. [Restful specification](#restful-specification)
@@ -9,7 +9,8 @@
   - /api/pg/v1/walFile/:walFile
   - /api/pg/v1/in_recovery
   - /api/pg/v1/validLsn
-2. [Test cases](#test-cases)
+2. Logical Replication(#logical-replication)
+3. [Test cases](#test-cases)
 
 ## Restful Specification
   |No | Resource                   | POST              | GET                                   |PUT                          | DELETE               |
@@ -307,6 +308,45 @@ $curl -X GET http://hostname/api/pg/v1/validLsn/3/0/39000028
   | 1  | code  | return code                       |
   | 2  | msg   | return message                    |
   | 3  | cnt   | Number of entries beghind the lsn |
+
+## Logical Replication
+### The logical slot meta data 
+ |slot_name |   plugin    | slot_type | datoid | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush  |
+ |-         | -           | -         | -      | -         | -      | -          | -    | -            | -           | -                |
+ |test02    | decoderbufs | logical   |  16385 | f         | f      |            |      |          630 | 0/5D000E30  | 0/5E000140       |
+
+### Binary data from pg_replset/test02/state
+```shell
+          |<-int->| ||
+00000000: a11c 0501 c8c5 aa47 0200 0000 a000 0000  .......G........
+          |<- Slot name
+00000010: 7465 7374 3032 0000 0000 0000 0000 0000  test02..........
+00000020: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000030: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+                                              ->|
+00000040: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+
+                    Slot Persistency
+          DB oid              xmin      catalog_xmin
+          |<-   ->| |<-   ->| |<-   ->| |<-   ->|
+00000050: 0140 0000 0000 0000 0000 0000 7602 0000  .@..........v...
+          database oid     : 0000 4001 -> select oid from pg_data where datname = 'dbname';
+          slot Persistency : RS_PERSISTENT/RS_EPHEMERAL/RS_TEMPORARY
+          catalog_xmin     : 0000 0276 -> select catalog_xmin from pg_get_replication_slots() where slot_name = 'slot name';
+
+                                 confirmed_flush
+          |<- restart_lsn ->| |<-             ->|
+00000060: 300e 005d 0000 0000 4001 005e 0000 0000  0..]....@..^....
+          restart_lsn      : 0000 0000 5D00 0E30 -> select restart_lsn from  pg_get_replication_slots() where slot_name = 'slot name'
+          confirmed_flush  : 0000 0000 5E00 0140 -> select confirmed_flush_lsn from  pg_get_replication_slots() where slot_name = 'slot name'
+
+          |<- plugin name
+00000070: 6465 636f 6465 7262 7566 7300 0000 0000  decoderbufs.....
+00000080: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+                                              ->|
+000000a0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+```
 
 ## Test cases
 ### Slave restart
