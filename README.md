@@ -47,21 +47,24 @@ $curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
   | 8  | switchover      | slaveMaster        | Switchover (slave down -> master down -> slave up -> master up)     |
 
 **Start the node directly**
---todo
+Start the nodes without any special conversion in the database side
 ```shell
 $curl -X POST http://pg-node01:8079/api/pg/v1/instance/current
+{"pg-node01":"single","pg-node02":"inactive"}
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/current
+{"pg-node02":"slave","pg-node01":"master"}
 ```
 
 **Start the node as master**
---todo
 ```shell
-$curl -X POST http://pg-node01:8079/api/pg/v1/instance/master
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/master
+{"pg-node01":"inactive","pg-node02":"inactive"}
 ```
 
-**Start the node as slace**
---todo
+**Start the node as slave**
 ```shell
-$curl -X POST http://pg-node01:8079/api/pg/v1/instance/master
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/slave
+{"pg-node01":"slave","pg-node02":"master"}
 ```
 
 **Start the nodes be the sequence (Master -> Slave)**
@@ -71,35 +74,119 @@ $curl -X POST http://pg-node01:8079/api/pg/v1/instance/all
 ```
 
 **Failover (stop slave -> start node as master)**
---todo
+Promote the slave node to master by restarting the node does not change the timeline of wal
 ```shell
-$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/masterSlave
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"master","pg-node02":"slave"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/56000028",
+        "chkRedoPoint": "0/56000028",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    },
+    "pg-node02": {
+        "chkPoint": "0/56000098",
+        "chkRedoPoint": "0/56000098",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    }
+}
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/master
+{"pg-node01":"inactive","pg-node02":"single"}
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/failover/restart
+{"pg-node02":"single","pg-node01":"inactive"}
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/slave
+{"pg-node01":"slave","pg-node02":"master"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/56000028",
+        "chkRedoPoint": "0/56000028",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    },
+    "pg-node02": {
+        "chkPoint": "0/56000098",
+        "chkRedoPoint": "0/56000098",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    }
+}
 ```
 
 **Failover (Promote)**
---todo
+Promote the slave node to master by promote command incremental the timeline of wal
 ```shell
-$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"slave","pg-node02":"master"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/56000028",
+        "chkRedoPoint": "0/56000028",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    },
+    "pg-node02": {
+        "chkPoint": "0/56000098",
+        "chkRedoPoint": "0/56000098",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    }
+}
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/master
+{"pg-node01":"single","pg-node02":"inactive"}
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/failover/promote
+{"pg-node01":"single","pg-node02":"inactive"}
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/slave
+{"pg-node01":"master","pg-node02":"slave"}   => {"pg-node01":"single","pg-node02":"single"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/57000100",
+        "chkRedoPoint": "0/570000C8",
+        "lastLsn": "0/57000170",
+        "timeLineID": "5",
+        "walFile": "000000050000000000000057"
+    },
+    "pg-node02": {
+        "chkPoint": "0/57000028",
+        "chkRedoPoint": "0/57000028",
+        "lastLsn": "0/57000028",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000057"
+    }
+}
 ```
+Here has one issue to resolve. When starting the slave, the got status is not updated. Still showing both single, has to wait for a moment
 
 **Switch the master slave by the sequence (master down -> slave down -> slave start as master -> master start as slave)**
 --todo
 ```shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"master","pg-node02":"slave"}
 $curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/masterSlave
+{"pg-node01":"slave","pg-node02":"master"}
 ```
 
 **Switch the master slave by the sequence (slave down -> master down -> slave start as master -> master start as slave)**
---todo
 ```shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"slave","pg-node02":"master"}
 $curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster
+{"pg-node01":"master","pg-node02":"slave"}
 ```
 
 #### DELETE
-**Stop the specified node**
-```shell
-$curl -X DELETE http://pg-node01/api/pg/v1/instance/all
-{"pg-node01":"inactive","pg-node02":"inactive"}
-```
+
   | No | Scope       | Comment                                        |
   | -  | -           | -                                              |
   | 1  | current     | Stop the specified node (pg_ctl stop -D /DATA) |
@@ -108,6 +195,39 @@ $curl -X DELETE http://pg-node01/api/pg/v1/instance/all
   | 4  | all         | Stop by the sequence(slave -> master)          |
   | 5  | slaveMaster | same to all                                    |
   | 6  | masterSlave | Stop by the sequence(master -> slave)          |
+
+**Stop the specified node**
+```shell
+$curl -X DELETE http://pg-node01/api/pg/v1/instance/current
+{"pg-node01":"inactive","pg-node02":"inactive"}
+```
+
+**Stop the master node if exists**
+```shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"slave","pg-node02":"master"}
+$curl -X DELETE http://pg-node01/api/pg/v1/instance/master
+{"pg-node01":"single","pg-node02":"inactive"}
+```
+
+**Stop the slave node if exists**
+--todo
+```shell
+$curl -X DELETE http://pg-node01/api/pg/v1/instance/slave
+```
+
+**Stop the nodes by the sequence (slave -> master)**
+```shell
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster
+{"pg-node01":"inactive","pg-node02":"inactive"}
+```
+
+**Stop the nodes by the sequence (master -> slave) **
+```shell
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/masterSlave
+{"pg-node01":"inactive","pg-node02":"inactive"}
+```
+
 
 ### /api/pg/v1/node/:scope
 ```shell
