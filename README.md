@@ -1,4 +1,5 @@
-# Postgres HA                                           ![Image of Yomo](https://github.com/luyomo/yomo-postgres-ha/blob/master/image/yomo.jpg)
+<img align="right" width="150" height="50" src="https://github.com/luyomo/yomo-postgres-ha/blob/master/image/yomo.jpg">
+# Postgres HA
 ## Table of contents
 1. [Restful specification](#restful-specification)
   - /api/pg/v1/instance/:scope
