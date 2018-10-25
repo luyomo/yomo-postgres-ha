@@ -1,6 +1,13 @@
-# Postgres HA
+# Postgres HA                                           ![Image of Yomo](https://github.com/luyomo/yomo-postgres-ha/blob/master/image/yomo.jpg)
 ## Table of contents
 1. [Restful specification](#restful-specification)
+  - /api/pg/v1/instance/:scope
+  - /api/pg/v1/node/:scope
+  - /api/pg/v1/lsn/:scope
+  - /api/pg/v1/walFiles/:scope
+  - /api/pg/v1/walFile/:walFile
+  - /api/pg/v1/in_recovery
+  - /api/pg/v1/validLsn
 2. [Test cases](#test-cases)
 
 ## Restful Specification
