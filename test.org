@@ -7,4 +7,6 @@
    | Peter |  1234 |  17 |
    | Anna  |  4332 |  25 |
 
-#+INCLUDE: "file:./image/01-slave-restart.svg" export html
+#+ATTR_HTML: :style width:80%
+[[./image/01-slave-restart.svg]]
+
