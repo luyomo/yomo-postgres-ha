@@ -6,3 +6,20 @@
    |-------+-------+-----|
    | Peter |  1234 |  17 |
    | Anna  |  4332 |  25 |
+
+#+BEGIN_SRC plantuml :file ./svg/01-slave-restart.svg
+title Restart by the sequence (slave -> master)
+activate NODE01
+activate NODE02
+== Initialize the cluster status ==
+NODE01 -> NODE01 : Start the NODE01 as the master node
+NODE02 -> NODE02 : Start the NODE02 as the slave node
+
+== Stop the cluster ==
+NODE02 -> NODE02 : Stop the slave node first
+NODE01 -> NODE01 : Stop the master node second
+
+== Restart the cluster ==
+NODE01 -> NODE01 : Restart the master first
+NODE02 -> NODE02 : Restart the slave second
+#+END_SRC
