@@ -1,0 +1,22 @@
+{
+  "name": "restful",
+  "version": "1.0.0",
+  "description": "Postgres master slave restful",
+  "main": "index.js",
+  "dependencies": {
+    "async-busboy": "^0.7.0",
+    "koa-bodyparser": "^4.2.1",
+    "koa-router": "^7.4.0",
+    "koa-send": "^5.0.0",
+    "koa2": "^2.0.0-alpha.7",
+    "lodash": "^4.17.11",
+    "lodash-joins": "^2.0.3",
+    "util": "^0.11.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "chou",
+  "license": "ISC"
+}

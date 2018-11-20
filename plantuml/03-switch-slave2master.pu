@@ -1,0 +1,47 @@
+title Switchover by the sequence (slave -> master)
+actor caller
+activate NODE01
+activate NODE02
+== Initialize the cluster status ==
+caller -> NODE01 : 01. Call function to stop two nodes
+activate NODE01 #Gray
+NODE01 -> NODE02 : 01. Call function to stop two nodes
+activate NODE02 #Gray
+caller -> NODE01 : 02. start node01 as the master
+deactivate NODE01
+NODE01->NODE01 : Change state
+activate NODE01 #DarkSalmon
+NODE01 -> NODE02 : 02. start node02 as the slave
+deactivate NODE01
+deactivate NODE02
+NODE01 <-[#red]-> NODE02 : Change state
+activate NODE01 #Red
+activate NODE02 #Blue
+caller -> NODE01 : 05  Insert test data
+
+== Switch the master and slave ==
+group restart
+  deactivate NODE01
+  deactivate NODE02
+  caller -> NODE02 : 11. Stop the original slave
+  caller -> NODE01 : 11. Stop the original master
+  caller -> NODE02 : 11. Start the origianl slave as new master
+  caller -> NODE01 : 11. Start the original master as new slave
+  NODE01 -> NODE01 : change state
+  activate NODE02 #Red
+  activate NODE01 #Blue
+end
+
+== Stop the cluster ==
+caller -> NODE01 : 21. stop node01(master first)
+NODE01 -> NODE02 : 21. stop node02(slave second)
+deactivate NODE01
+deactivate NODE02
+
+note over NODE01, NODE02
+Gray : inactive
+DarkSalmon : Single
+Red : master
+Blue : slave
+Green : in-recovery
+end note

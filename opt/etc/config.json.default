@@ -1,0 +1,5 @@
+{
+  "localIP"        : "${LOCAL_NODE}",
+  "remoteIP"       : "${REMOTE_NODE}",
+  "listening_port" : "${LISTENING_PORT}"    
+}

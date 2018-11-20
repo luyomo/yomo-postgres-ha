@@ -9,7 +9,7 @@
   - /api/pg/v1/walFile/:walFile
   - /api/pg/v1/in_recovery
   - /api/pg/v1/validLsn
-2. Logical Replication(#logical-replication)
+2. [Logical Replication](#logical-replication)
 3. [Test cases](#test-cases)
 
 ## Restful Specification
@@ -317,8 +317,14 @@ $curl -X GET http://hostname/api/pg/v1/validLsn/3/0/39000028
 
 ### Binary data from pg_replset/test02/state
 ```shell
-          |<-int->| ||
+          magic     checksum  version   length
+          |<-   ->| |<-   ->| |<-   ->| |<-   ->|
 00000000: a11c 0501 c8c5 aa47 0200 0000 a000 0000  .......G........
+          magic   :  SLOT_MAGIC(0x1051CA1) in the file slot.c
+          checksum: Checksum of string from version to end
+          version : SLOT_VERSION(2) in the file slot.c
+          length  : 0xaf - 0x0f = 0xa0 (Exclude the first line)
+
           |<- Slot name
 00000010: 7465 7374 3032 0000 0000 0000 0000 0000  test02..........
 00000020: 0000 0000 0000 0000 0000 0000 0000 0000  ................

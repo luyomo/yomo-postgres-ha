@@ -1,0 +1,32 @@
+version: '3.0'
+services:
+  pg:
+    image: "yomo-pg"
+    ports:
+      - "8082:5432"
+      - "8079:8086"
+    extra_hosts:
+      - "pg-node01:10.137.91.60"
+      - "pg-node02:10.137.91.213"
+    volumes:
+      - /home/chunhua.zhang/01-docker-repo/yomo-pg/opt/restful:/opt/restful
+    environment:
+      - LOCAL_NODE=pg-node01
+      - REMOTE_NODE=pg-node02
+      - LISTENING_PORT=8086
+      - SUBNET=10.137.91.0
+      - MASK=24
+      - REPLICATE_USER=replicate
+      - PGDATA=/data/data01
+#    volumes:
+#      - /home/chunhua.zhang/01-docker-repo/yomo-pg/data:/data
+#      - /home/chunhua.zhang/01-docker-repo/yomo-pg/opt:/opt
+    networks:
+      - yomo-pg
+
+networks:
+  yomo-pg:
+
+#docker run -it --entrypoint=bash -p 8082:5432 -p 8079:8086 --add-host="pg-node01:10.137.91.60" --add-host="pg-node02:10.137.91.213" -v /home/chunhua.zhang/01-docker-repo/yomo-pg/data:/data -v /home/chunhua.zhang/01-docker-repo/yomo-pg/opt/restful:/opt/restful yomo-pg
+#
+#docker run -it --entrypoint=bash -p 8082:5432 -p 8079:8086 --add-host="pg-node01:10.137.91.60" --add-host="pg-node02:10.137.91.213" -e LOCAL_NODE=pg-node01 -e REMOTE_NODE=pg-node02 -e LISTENING_PORT=8086 -e SUBNET=10.137.91.0 -e MASK=24 -e REPLICATE_USER=replicate -e PGDATA=/data/data01 yomo-pg

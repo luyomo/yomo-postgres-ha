@@ -1,0 +1,712 @@
+#+OPTIONS: ^:nil
+#+CAPTION: This is a table with lines around and between cells
+#+ATTR_HTML: :border 2 :rules all :frame border
+#+STARTUP: inlineimages
+
+
+#+bind: org-export-publishing-directory "./html"
+[[./images/yomo.jpg]]
+
+* Postgres HA
+
+** Restful Specification
+  | No | Resource                    | POST                      | GET                                  | PUT                         | DELETE               |
+  |----+-----------------------------+---------------------------+--------------------------------------+-----------------------------+----------------------|
+  |  1 | /api/pg/v1/nodes/env        | Update env to config file |                                      |                             |                      |
+  |  2 | /api/pg/v1/pg/:scope/:path  |                           |                                      |                             |                      |
+  |  3 | /api/pg/v1/instance/:scope  | Start pg instance         | Get the instance state               | -                           | Stop the pg instance |
+  |  4 | /api/pg/v1/node/:scope      | Promote the slave         | -                                    | -                           | -                    |
+  |  5 | /api/pg/v1/lsn/:scope       | -                         | Get the pg's lsn info                | -                           | -                    |
+  |  6 | /api/pg/v1/walFiles/:scope  | -                         | Get the wal files from specified lsn | -                           | -                    |
+  |  7 | /api/pg/v1/walFile/:walFile | -                         | Get the wal file from remote         | Push the wal file to remote | -                    |
+  |  8 | /api/pg/v1/in_recovery      | -                         | Get the node's recovery mode         | -                           | -                    |
+  |  9 | /api/pg/v1/validLsn/:scope  | -                         | Check whether the lsn is valid       | -                           | -                    |
+
+
+*** /api/pg/v1/pg/:scope/:path
+  | No | Scope | Comment                                                                                        |
+  |----+-------+------------------------------------------------------------------------------------------------|
+  |  1 | init  | Initialize the database structure and copy the postgresql.conf/recovery.slave.conf/pg_hba.conf |
+  |  2 | sync  | Sync the data from remote host to local and copy the config files                              |
+*** /api/pg/v1/instance/:scope
+**** GET
+***** Get the specified node's state
+#+ATTR_HTML: :style background-color:$Black;
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/current
+{"pg-node01":"single"}%
+#+END_SRC
+
+***** Get all nodes' state
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+#+END_SRC
+
+  | No | state    | Comment       |
+  |----+----------+---------------|
+  |  1 | single   | single node   |
+  |  2 | master   | master node   |
+  |  3 | slave    | slave node    |
+  |  4 | inactive | Not started   |
+  |  5 | recovery | Recovery mode |
+
+**** POST
+
+  | No | Scope      | Sequence    | Comment                                                         | Test Case           |
+  |----+------------+-------------+-----------------------------------------------------------------+---------------------|
+  |  1 | current    |             | Start the specified node (pg_ctl stop -D /DATA)                 | Test Case 01: 21/23 |
+  |  2 | master     |             | Start the specified node as master                              | Test Case 01: 2     |
+  |  3 | slave      |             | Start the specified node as slave                               | Test Case 01: 3     |
+  |  4 | all        | masterSlave | Start the node by the sequence(the master -> another slave)     | Test Case 02: 2     |
+  |  5 | failover   | restart     | Promote the slave node by restarting                            | Test Case 05        |
+  |  6 | failover   | promote     | Promote the slave node by promoting                             | Test Case 06        |
+  |  7 | switchover | masterSlave | Switchover (master down -> slave down -> slave up -> master up) | Test Case 04        |
+  |  8 | switchover | slaveMaster | Switchover (slave down -> master down -> slave up -> master up) | Test Case 03        |
+
+***** Start the node directly
+Start the nodes without any special conversion in the database side
+#+BEGIN_SRC shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/current
+{"pg-node01":"single","pg-node02":"inactive"}
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/current
+{"pg-node02":"slave","pg-node01":"master"}
+#+END_SRC
+
+***** Start the node as master
+#+BEGIN_SRC shell
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/master
+{"pg-node01":"inactive","pg-node02":"single"}
+#+END_SRC
+
+***** Start the node as slave
+#+BEGIN_SRC shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/slave
+{"pg-node01":"slave","pg-node02":"master"}
+#+END_SRC
+
+***** Start the nodes be the sequence (Master -> Slave)
+#+BEGIN_SRC shell
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"master","pg-node02":"slave"}%
+#+END_SRC
+
+***** Failover (stop slave -> start node as master)
+Promote the slave node to master by restarting the node does not change the timeline of wal
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"master","pg-node02":"slave"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/56000028",
+        "chkRedoPoint": "0/56000028",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    },
+    "pg-node02": {
+        "chkPoint": "0/56000098",
+        "chkRedoPoint": "0/56000098",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    }
+}
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/master
+{"pg-node01":"inactive","pg-node02":"single"}
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/failover/restart
+{"pg-node02":"single","pg-node01":"inactive"}
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/slave
+{"pg-node01":"slave","pg-node02":"master"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/56000028",
+        "chkRedoPoint": "0/56000028",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    },
+    "pg-node02": {
+        "chkPoint": "0/56000098",
+        "chkRedoPoint": "0/56000098",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    }
+}
+#+END_SRC
+
+***** Failover (Promote)
+Promote the slave node to master by promote command incremental the timeline of wal
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"slave","pg-node02":"master"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/56000028",
+        "chkRedoPoint": "0/56000028",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    },
+    "pg-node02": {
+        "chkPoint": "0/56000098",
+        "chkRedoPoint": "0/56000098",
+        "lastLsn": "0/56000108",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000056"
+    }
+}
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/master
+{"pg-node01":"single","pg-node02":"inactive"}
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/failover/promote
+{"pg-node01":"single","pg-node02":"inactive"}
+$curl -X POST http://pg-node02:8079/api/pg/v1/instance/slave
+{"pg-node01":"master","pg-node02":"slave"}   => {"pg-node01":"single","pg-node02":"single"}
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all | python -m json.tool
+{
+    "pg-node01": {
+        "chkPoint": "0/57000100",
+        "chkRedoPoint": "0/570000C8",
+        "lastLsn": "0/57000170",
+        "timeLineID": "5",
+        "walFile": "000000050000000000000057"
+    },
+    "pg-node02": {
+        "chkPoint": "0/57000028",
+        "chkRedoPoint": "0/57000028",
+        "lastLsn": "0/57000028",
+        "timeLineID": "4",
+        "walFile": "000000040000000000000057"
+    }
+}
+#+END_SRC
+Here has one issue to resolve. When starting the slave, the got status is not updated. Still showing both single, has to wait for a moment
+
+***** Switch the master slave by the sequence (master down -> slave down -> slave start as master -> master start as slave)
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"master","pg-node02":"slave"}
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/masterSlave
+{"pg-node01":"slave","pg-node02":"master"}
+#+END_SRC
+
+***** Switch the master slave by the sequence (slave down -> master down -> slave start as master -> master start as slave)
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"slave","pg-node02":"master"}
+$curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster
+{"pg-node01":"master","pg-node02":"slave"}
+#+END_SRC
+
+**** DELETE
+
+  | No | Scope       | Comment                                        | Test                                |
+  |----+-------------+------------------------------------------------+-------------------------------------|
+  |  1 | current     | Stop the specified node (pg_ctl stop -D /DATA) | Test case 01: 12 / Test case 02: 13 |
+  |  2 | master      | Find the master node to stop                   | Test case 01: 11                    |
+  |  3 | slave       | Find the slave node to stop                    | Test case 02 :11                    |
+  |  4 | all         | Stop by the sequence(slave -> master)          | Test case 01: 1                     |
+  |  5 | slaveMaster | same to all                                    | Test case 02: 24                    |
+  |  6 | masterSlave | Stop by the sequence(master -> slave)          | Test case 01: 24                    |
+
+***** Stop the specified node
+#+BEGIN_SRC shell
+$curl -X DELETE http://pg-node01/api/pg/v1/instance/current
+{"pg-node01":"inactive","pg-node02":"inactive"}
+#+END_SRC
+
+***** Stop the master node if exists
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"slave","pg-node02":"master"}
+$curl -X DELETE http://pg-node01/api/pg/v1/instance/master
+{"pg-node01":"single","pg-node02":"inactive"}
+#+END_SRC
+
+***** Stop the slave node if exists
+--todo
+#+BEGIN_SRC shell
+$curl -X DELETE http://pg-node01/api/pg/v1/instance/slave
+#+END_SRC
+
+***** Stop the nodes by the sequence (slave -> master)
+#+BEGIN_SRC shell
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster
+{"pg-node01":"inactive","pg-node02":"inactive"}
+#+END_SRC
+
+***** Stop the nodes by the sequence (master -> slave)
+#+BEGIN_SRC shell
+$curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/masterSlave
+{"pg-node01":"inactive","pg-node02":"inactive"}
+#+END_SRC
+
+*** /api/pg/v1/node/:scope
+#+BEGIN_SRC shell
+curl -X POST http://pg-node01:8079/api/pg/v1/node/promote
+{"pg-node-01":"single","pg-node-02":"inactive"}%
+#+END_SRC
+
+*** /api/pg/v1/lsn/:scope
+**** Get the node's lsn info
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/current
+{"hostname":{"chkPoint":"0/39000100","chkRedoPoint":"0/390000C8","walFile":"000000040000000000000039","timeLineID":"4","lastLsn":"0/39000170"}}
+#+END_SRC
+
+**** Get all nodes's lsn  info
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/lsn/all
+{"pg-host-01":{"chkPoint":"0/39000100","chkRedoPoint":"0/390000C8","walFile":"000000040000000000000039","timeLineID":"4","lastLsn":"0/39000170"},
+ "pg-host-02":{"chkPoint":"0/39000028","chkRedoPoint":"0/39000028","walFile":"000000030000000000000039","timeLineID":"3","lastLsn":"0/39000028"}}%
+#+END_SRC
+
+*** /api/pg/v1/walFiles/:scope
+**** Call from timeline/lsn
+#+BEGIN_SRC shell
+$curl -X GET http://hostname/api/pg/v1/walFiles/3/0/39000028
+[{"file":"000000030000000000000039.partial","md5":"eedd5ebc09b162d8464ff53d9c98f492"}
+,{"file":"00000004.history","md5":"6e2a9301e80b7a952fcd69d574c7dfc7"}
+,{"file":"000000040000000000000039","md5":"add3d229ab7a6fa5c95de7c5e86aa5b4"}]
+#+END_SRC
+
+**** Call from wal file
+#+BEGIN_SRC shell
+$curl -X GET http://pg-node01:8079/api/pg/v1/walFiles/000000030000000000000039
+[{"file":"000000030000000000000039.partial","md5":"eedd5ebc09b162d8464ff53d9c98f492"}
+,{"file":"00000004.history","md5":"6e2a9301e80b7a952fcd69d574c7dfc7"}
+,{"file":"000000040000000000000039","md5":"add3d229ab7a6fa5c95de7c5e86aa5b4"}]
+#+END_SRC
+
+*** /api/pg/v1/walFile/:walFile
+**** Upload the wal file to remote
+#+BEGIN_SRC shell
+$curl -i -X POST -H "Content-Type: multipart/form-data" -F "data=@/tmp/000000030000000000000018" http://hostname/api/pg/v1/walFile/000000080000000000000039
+HTTP/1.1 100 Continue
+
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Content-Length: 80
+Date: Wed, 24 Oct 2018 01:39:20 GMT
+Connection: keep-alive
+
+{"code":0,"msg":"The file </data/pg_wal/000000080000000000000039> was uploaded"}
+#+END_SRC
+
+**** Download the wal file from remote
+#+BEGIN_SRC shell
+$curl -X GET http://hostname/api/pg/v1/walFile/000000040000000000000039 --output /tmp/000000040000000000000039
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 16.0M  100 16.0M    0     0   127M      0 --:--:-- --:--:-- --:--:--  129M
+#+END_SRC
+
+*** /api/pg/v1/in_recovery
+#+BEGIN_SRC shell
+$curl -X GET http://hostname/api/pg/v1/in_recovery
+{"in_recovery":"f"}
+#+END_SRC
+
+*** /api/pg/v1/validLsn
+
+#+BEGIN_SRC shell
+$curl -X GET http://hostname/api/pg/v1/validLsn/3/0/39000028
+{"code":0,"msg":"Valid lsn","cnt":"1"}
+#+END_SRC
+
+  | No | Field | Comment                           |
+  |----+-------+-----------------------------------|
+  |  1 | code  | return code                       |
+  |  2 | msg   | return message                    |
+  |  3 | cnt   | Number of entries beghind the lsn |
+
+** Docker start
+*** Docker variables
+
+    | No | ENV Name       | Default   | Comment                                             |
+    |----+----------------+-----------+-----------------------------------------------------|
+    |  1 | LOCAL_NODE     | PGNODE01  | The host name for the first node                    |
+    |  2 | REMOTE_NODE    | PGNODE02  | The host name for the second node                   |
+    |  3 | LISTENING_PORT | 8086      | The listening port for the restful service          |
+    |  4 | SUBNET         | 0.0.0.0   | The subnet for the internal replication stream      |
+    |  5 | MASK           | 32        | The subnet mask for the internal replication stream |
+    |  6 | REPLICATE_USER | replicate | The replicate user for the physical stream          |
+    |  7 | PGDATA         | /data     | The default data path for the database              |
+    |  8 | APPLY_DELAY    |           | The replay delay on the slave node(5min)            |
+    |  9 | DATABASE       | datasync  | The default database to use                         |
+    | 10 | DB_USER        | datasync  | The default user for the database owner             |
+    | 11 | DB_PASSWD      | datasync  | The default password for the user                   |
+*** Config file sample
+**** recovery.conf
+#+BEGIN_SRC shell
+standby_mode = 'on'
+primary_conninfo = 'host=pg-node01 port=8082 user=replicate'
+recovery_min_apply_delay = '5min'
+#+END_SRC
+
+**** pg_hba.conf
+#+BEGIN_SRC shell
+# "local" is for Unix domain socket connections only
+local   all             all                                     trust
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            trust
+# IPv6 local connections:
+host    all             all             ::1/128                 trust
+host    replication     replicate       10.137.91.0/24       trust
+host    all             all             0.0.0.0/0               md5
+# Allow replication connections from localhost, by a user with the
+# replication privilege.
+local   replication     all                                     trust
+host    replication     all             127.0.0.1/32            trust
+host    replication     all             ::1/128                 trust
+#+END_SRC
+
+*** Setup procedures
+**** docker_composer.yml
+  - Start pg-node1's instance
+#+BEGIN_SRC shell
+pg-node01$docker-compose up -d
+Creating network "yomo-pg_yomo-pg" with the default driver
+Creating yomo-pg_pg_1 ... done
+pg-node01#curl -X POST http://pg-node01:8079/api/pg/v1/nodes/env
+{"local_node":"pg-node01","remote_node":"pg-node02"}
+#+END_SRC
+
+  - Start pg node2's instance
+#+BEGIN_SRC shell
+pg-node02$docker-compose up -d
+Creating network "yomo-pg_yomo-pg" with the default driver
+Creating yomo-pg_pg_1 ... done
+pg-node02#curl -X POST http://pg-node02:8079/api/pg/v1/nodes/env
+{"local_node":"pg-node02","remote_node":"pg-node01"}
+#+END_SRC
+
+  - Initialize the pg instance
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/pg/init/data01
+#+END_SRC
+
+  - Sync data from pg-node01 to pg-node02
+#+BEGIN_SRC shell
+pg-node02$curl -X POST http://pg-node02:8079/api/pg/v1/pg/sync/data01
+#+END_SRC
+
+  - Start pg-node01 as master/ pg-node02 as slave
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/instance/all
+{"pg-node01":"master","pg-node02":"slave"}
+#+END_SRC
+
+** Logical Replication
+*** The logical slot meta data
+ | slot_name | plugin      | slot_type | datoid | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush |
+ |-----------+-------------+-----------+--------+-----------+--------+------------+------+--------------+-------------+-----------------|
+ | test02    | decoderbufs | logical   |  16385 | f         | f      |            |      |          630 | 0/5D000E30  | 0/5E000140      |
+
+*** Binary data from pg_replset/test02/state
+#+BEGIN_SRC shell
+          magic     checksum  version   length
+          |<-   ->| |<-   ->| |<-   ->| |<-   ->|
+00000000: a11c 0501 c8c5 aa47 0200 0000 a000 0000  .......G........
+          slot.c->ReplicationSlotOnDisk
+          magic: fixed
+          checksum: The checksum from 0200 to 0b00
+          version: fixed
+          length: fixed(0a00) Exclude the first line
+
+          |<- Slot name
+00000010: 7465 7374 3032 0000 0000 0000 0000 0000  test02..........
+00000020: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000030: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+                                              ->|
+00000040: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+
+                    Slot Persistency
+          DB oid              xmin      catalog_xmin
+          |<-   ->| |<-   ->| |<-   ->| |<-   ->|
+00000050: 0140 0000 0000 0000 0000 0000 7602 0000  .@..........v...
+          database oid     : 0000 4001 -> select oid from pg_data where datname = 'dbname';
+          slot Persistency : RS_PERSISTENT/RS_EPHEMERAL/RS_TEMPORARY
+          catalog_xmin     : 0000 0276 -> select catalog_xmin from pg_get_replication_slots() where slot_name = 'slot name';
+
+                                 confirmed_flush
+          |<- restart_lsn ->| |<-             ->|
+00000060: 300e 005d 0000 0000 4001 005e 0000 0000  0..]....@..^....
+          restart_lsn      : 0000 0000 5D00 0E30 -> select restart_lsn from  pg_get_replication_slots() where slot_name = 'slot name'
+          confirmed_flush  : 0000 0000 5E00 0140 -> select confirmed_flush_lsn from  pg_get_replication_slots() where slot_name = 'slot name'
+
+          |<- plugin name
+00000070: 6465 636f 6465 7262 7566 7300 0000 0000  decoderbufs.....
+00000080: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+                                              ->|
+000000a0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+#+END_SRC
+
+** Test cases
+*** test case 01: Master restart
+  - tested commands
+   | Step | Command                                                              |
+   |------+----------------------------------------------------------------------|
+   |    1 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/all         |
+   |    2 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/master      |
+   |    4 | curl -X POST   'http://pg-node02:8079/api/pg/v1/instance/slave       |
+   |   11 | curl -X DELETE 'http://pg-node02:8079/api/pg/v1/instance/master      |
+   |   12 | curl -X DELETE 'http://pg-node02:8079/api/pg/v1/instance/current     |
+   |   21 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/current     |
+   |   23 | curl -X POST   'http://pg-node02:8079/api/pg/v1/instance/current     |
+   |   24 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/masterSlave |
+
+  - sequence chart
+[[./images/02-master-restart.svg]]
+
+  - execution
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/test/testCase01 | python -m json.tool
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   621  100   621    0     0     16      0  0:00:38  0:00:38 --:--:--   173
+{
+    "01": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/all"
+    },
+    "02": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/master"
+    },
+    "04": {
+        "cmd": "curl -X POST http://pg-node02:8079/api/pg/v1/instance/slave"
+    },
+    "11": {
+        "cmd": "curl -X DELETE http://pg-node02:8079/api/pg/v1/instance/master"
+    },
+    "12": {
+        "cmd": "curl -X DELETE http://pg-node02:8079/api/pg/v1/instance/current"
+    },
+    "21": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/current"
+    },
+    "23": {
+        "cmd": "curl -X POST http://pg-node02:8079/api/pg/v1/instance/current"
+    },
+    "24": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/masterSlave"
+    }
+}
+
+#+END_SRC
+
+*** test case 02:  Slave restart
+  - tested command
+    | Step | Command                                                                  |
+    |------+--------------------------------------------------------------------------|
+    |    1 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/slaveMaster     |
+    |    2 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/all/masterSlave |
+    |   11 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/slave           |
+    |   13 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/current         |
+    |   21 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/current         |
+    |   23 | curl -X POST   'http://pg-node02:8079/api/pg/v1/instance/current         |
+    |   24 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/slaveMaster     |
+
+  - sequence chart
+[[./images/01-slave-restart.svg]]
+
+  - execution
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/test/testCase02 | python -m json.tool
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   562  100   562    0     0     22      0  0:00:25  0:00:25 --:--:--   132
+{
+    "01": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster"
+    },
+    "02": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/all/masterSalve"
+    },
+    "11": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slave"
+    },
+    "13": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/current"
+    },
+    "21": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/current"
+    },
+    "23": {
+        "cmd": "curl -X POST http://pg-node02:8079/api/pg/v1/instance/current"
+    },
+    "24": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster"
+    }
+}
+#+END_SRC
+
+*** test case 03: Switch Over(Slave->Master)
+  - tested commands
+    | Step | Command                                                                         |
+    |------+---------------------------------------------------------------------------------|
+    |    1 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/slaveMaster            |
+    |    2 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/all/masterSalve        |
+    |   11 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster |
+    |   21 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/slaveMaster            |
+
+  - sequence chart
+[[./images/03-switch-slave2master.svg]]
+
+  - execution
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/test/testCase03 | python -m json.tool
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   344  100   344    0     0     16      0  0:00:21  0:00:21 --:--:--    82
+{
+    "01": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster"
+    },
+    "02": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/all/masterSalve"
+    },
+    "11": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster"
+    },
+    "21": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster"
+    }
+}
+#+END_SRC
+  - comment
+After this case the ha was corrupted
+
+*** test case 04: Switch Over(Master->Slave)
+  - tested commands
+    | Step | Command                                                                         |
+    |------+---------------------------------------------------------------------------------|
+    |    1 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/slaveMaster            |
+    |    2 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/all/slaveMaster        |
+    |   11 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster |
+    |   21 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/slaveMaster            |
+
+  - sequence chart
+[[./images/04-switch-master2slave.svg]]
+
+  - execution
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/test/testCase04 | python -m json.tool
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   344  100   344    0     0     16      0  0:00:21  0:00:21 --:--:--   100
+{
+    "01": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster"
+    },
+    "02": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/all/slaveMaster"
+    },
+    "11": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/switchover/slaveMaster"
+    },
+    "21": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/slaveMaster"
+    }
+}
+#+END_SRC
+  - comment
+Not statable. Need to test
+
+*** test case 05: Fail over (Restart slave)
+  - tested commands
+
+    | Step | Command                                                                   |
+    |------+---------------------------------------------------------------------------|
+    |    1 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/all              |
+    |    2 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/master           |
+    |    4 | curl -X POST   'http://pg-node02:8079/api/pg/v1/instance/slave            |
+    |   11 | curl -X DELETE 'http://pg-node02:8079/api/pg/v1/instance/master           |
+    |   12 | curl -X POST   'http://pg-node02:8079/api/pg/v1/instance/failover/restart |
+    |   21 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/slave            |
+    |   23 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/masterSlave      |
+
+  - sequence chart
+[[./images/05-failover-master2slave.svg]]
+
+  - execution
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/test/testCase05 | python -m json.tool
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   549  100   549    0     0     13      0  0:00:42  0:00:41  0:00:01   118
+{
+    "01": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/all"
+    },
+    "02": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/master"
+    },
+    "04": {
+        "cmd": "curl -X POST http://pg-node02:8079/api/pg/v1/instance/slave"
+    },
+    "11": {
+        "cmd": "curl -X DELETE http://pg-node02:8079/api/pg/v1/instance/master"
+    },
+    "12": {
+        "cmd": "curl -X POST http://pg-node02:8079/api/pg/v1/instance/failover/restart"
+    },
+    "21": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/slave"
+    },
+    "23": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/masterSlave"
+    }
+}
+#+END_SRC
+
+*** test case 06:  Fail over (Promote slave)
+  - test commands
+    | Step | Command                                                                   |
+    |------+---------------------------------------------------------------------------|
+    |    1 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/all              |
+    |    2 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/master           |
+    |    4 | curl -X POST   'http://pg-node02:8079/api/pg/v1/instance/slave            |
+    |   11 | curl -X DELETE 'http://pg-node02:8079/api/pg/v1/instance/master           |
+    |   12 | curl -X POST   'http://pg-node02:8079/api/pg/v1/instance/failover/promote |
+    |   21 | curl -X POST   'http://pg-node01:8079/api/pg/v1/instance/slave            |
+    |   23 | curl -X DELETE 'http://pg-node01:8079/api/pg/v1/instance/masterSlave      |
+
+  - sequence chart
+
+[[./images/06-failover-slave2master.svg]]
+
+  - executions
+#+BEGIN_SRC shell
+pg-node01$curl -X POST http://pg-node01:8079/api/pg/v1/test/testCase06 | python -m json.tool
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   549  100   549    0     0     15      0  0:00:36  0:00:35  0:00:01   121
+{
+    "01": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/all"
+    },
+    "02": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/master"
+    },
+    "04": {
+        "cmd": "curl -X POST http://pg-node02:8079/api/pg/v1/instance/slave"
+    },
+    "11": {
+        "cmd": "curl -X DELETE http://pg-node02:8079/api/pg/v1/instance/master"
+    },
+    "12": {
+        "cmd": "curl -X POST http://pg-node02:8079/api/pg/v1/instance/failover/promote"
+    },
+    "21": {
+        "cmd": "curl -X POST http://pg-node01:8079/api/pg/v1/instance/slave"
+    },
+    "23": {
+        "cmd": "curl -X DELETE http://pg-node01:8079/api/pg/v1/instance/masterSlave"
+    }
+}
+
+#+END_SRC
