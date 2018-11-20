@@ -356,6 +356,7 @@ $curl -X GET http://hostname/api/pg/v1/validLsn/3/0/39000028
 
 ## Test cases
 ### Slave restart
+<img src="./image/01-slave-restart.svg">
 ### Master restart
 ### Switch Over(Slave->Master)
 ### Switch Over(Master->Slave)

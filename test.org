@@ -1,0 +1,12 @@
+
+* This is the test for org-mode
+** Can I push it to the github sucessfully
+
+   | Name  | Phone | Age |
+   |-------+-------+-----|
+   | Peter |  1234 |  17 |
+   | Anna  |  4332 |  25 |
+
+#+ATTR_HTML: :style width:80%
+[[./image/01-slave-restart.svg]]
+
